@@ -8,13 +8,13 @@ pool:
 
 steps:
   # ---------- a. Збирання проєкту ----------
-  - script: |
+  - pwsh: |
       python -m pip install --upgrade pip
       pip install -r requirements.txt
     displayName: 'Install dependencies'
 
   # ---------- b. Запуск unit-тестів ----------
-  - script: |
+  - pwsh: |
       pytest --junitxml=results.xml
     displayName: 'Run unit tests'
 
