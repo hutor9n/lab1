@@ -8,15 +8,19 @@ pool:
 
 steps:
   # ---------- a. Збирання проєкту ----------
-  - pwsh: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt
+  - task: CmdLine@2
     displayName: 'Install dependencies'
+    inputs:
+      script: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
 
   # ---------- b. Запуск unit-тестів ----------
-  - pwsh: |
-      pytest --junitxml=results.xml
+  - task: CmdLine@2
     displayName: 'Run unit tests'
+    inputs:
+      script: |
+        pytest --junitxml=results.xml
 
   - task: PublishTestResults@2
     inputs:
