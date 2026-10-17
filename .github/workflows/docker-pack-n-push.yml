@@ -1,0 +1,66 @@
+name: "Docker Pack and Push"
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: "Docker repository / image name (e.g. username/repo)"
+        required: true
+        type: string
+      image_tag:
+        description: "Docker image tag"
+        required: false
+        default: "latest"
+        type: string
+      push_to_hub:
+        description: "Whether to push image to Docker Hub (true for main branch)"
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+
+jobs:
+  docker-pack-n-push:
+    name: Build & Pack/Push Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: ${{ inputs.push_to_hub }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image to Docker Hub
+        if: ${{ inputs.push_to_hub }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ inputs.image_name }}:${{ inputs.image_tag }}
+
+      - name: Build and export Docker image for artifact
+        if: ${{ !inputs.push_to_hub }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: ${{ inputs.image_name }}:${{ inputs.image_tag }}
+          outputs: type=docker,dest=/tmp/docker-image.tar
+
+      - name: Upload Docker image artifact
+        if: ${{ !inputs.push_to_hub }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-${{ inputs.image_tag }}
+          path: /tmp/docker-image.tar
+          retention-days: 7
