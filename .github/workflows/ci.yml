@@ -46,7 +46,7 @@ jobs:
     needs: build-n-test
     uses: ./.github/workflows/docker-pack-n-push.yml
     with:
-      image_name: 'hutor9n/lab1-api'
+      image_name: 'hut0r9n/lab1-api'
       image_tag: 'latest'
       push_to_hub: ${{ github.ref == 'refs/heads/main' }}
     secrets: inherit
