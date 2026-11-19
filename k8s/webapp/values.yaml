@@ -1,0 +1,78 @@
+# Default values for webapp.
+# This is a YAML-formatted file.
+
+global:
+  app: lab-webapp
+
+# ---------- PostgreSQL Database Settings ----------
+database:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  name: postgres
+  user: postgres
+  password: postgrespassword
+  databaseName: itemsdb
+  port: 5432
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 1Gi
+
+# ---------- Migration Job Settings ----------
+migration:
+  enabled: true
+  image:
+    repository: hut0r9n/lab1-migration
+    tag: latest
+    pullPolicy: IfNotPresent
+  backoffLimit: 4
+
+# ---------- Backend API Settings ----------
+api:
+  enabled: true
+  replicas: 1
+  image:
+    repository: hut0r9n/lab1-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    name: lab-api
+    type: ClusterIP
+    port: 8000
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# ---------- Frontend Settings ----------
+frontend:
+  enabled: true
+  replicas: 1
+  image:
+    repository: hut0r9n/lab1-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    name: lab-frontend
+    type: ClusterIP
+    port: 80
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# ---------- Ingress Settings ----------
+ingress:
+  enabled: true
+  className: nginx
+  host: webapp.lab.test

@@ -1,16 +1,33 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional
+from sqlalchemy.orm import Session
+
+from app.database import Base, engine, get_db
+from app.models import ItemModel
+
+# Автоматичне створення таблиць (якщо міграції не запускалися окремо або для тестів)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Items API",
-    description="CRUD REST API для управління елементами — Лабораторна робота №1",
-    version="1.0.0",
+    description="CRUD REST API для управління елементами — Лабораторна робота №4",
+    version="2.0.0",
+)
+
+# Налаштування CORS для взаємодії з frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 # ---------------------------------------------------------------------------
-# Модель даних
+# Pydantic моделі (схеми DTO)
 # ---------------------------------------------------------------------------
 
 class ItemCreate(BaseModel):
@@ -24,24 +41,26 @@ class Item(ItemCreate):
     """Схема елемента, що повертається клієнту."""
     id: int = Field(..., examples=[1])
 
+    class Config:
+        from_attributes = True
+
 
 # ---------------------------------------------------------------------------
-# In-memory сховище
+# Допоміжна функція для тестів
 # ---------------------------------------------------------------------------
-
-_items: dict[int, Item] = {}
-_next_id: int = 1
-
 
 def _reset_storage() -> None:
-    """Очищає сховище (використовується в тестах)."""
-    global _items, _next_id
-    _items = {}
-    _next_id = 1
+    """Очищає таблицю items у базі даних (використовується в unit-тестах)."""
+    db = next(get_db())
+    try:
+        db.query(ItemModel).delete()
+        db.commit()
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------
-# Ендпоінти
+# Ендпоінти CRUD REST API
 # ---------------------------------------------------------------------------
 
 @app.get(
@@ -49,9 +68,10 @@ def _reset_storage() -> None:
     response_model=list[Item],
     summary="Отримати список об'єктів",
 )
-def get_items():
-    """Повертає список усіх елементів."""
-    return list(_items.values())
+def get_items(db: Session = Depends(get_db)):
+    """Повертає список усіх елементів з бази даних."""
+    items = db.query(ItemModel).all()
+    return items
 
 
 @app.get(
@@ -59,9 +79,9 @@ def get_items():
     response_model=Item,
     summary="Отримати об'єкт за ідентифікатором",
 )
-def get_item(item_id: int):
+def get_item(item_id: int, db: Session = Depends(get_db)):
     """Повертає елемент за його ID або 404."""
-    item = _items.get(item_id)
+    item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
     if item is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -76,13 +96,17 @@ def get_item(item_id: int):
     status_code=status.HTTP_201_CREATED,
     summary="Створити новий об'єкт",
 )
-def create_item(payload: ItemCreate):
-    """Створює новий елемент та повертає його з присвоєним ID."""
-    global _next_id
-    item = Item(id=_next_id, **payload.model_dump())
-    _items[_next_id] = item
-    _next_id += 1
-    return item
+def create_item(payload: ItemCreate, db: Session = Depends(get_db)):
+    """Створює новий елемент у базі даних та повертає його з присвоєним ID."""
+    db_item = ItemModel(
+        name=payload.name,
+        description=payload.description,
+        price=payload.price,
+    )
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
 
 @app.put(
@@ -90,16 +114,20 @@ def create_item(payload: ItemCreate):
     response_model=Item,
     summary="Оновити наявний об'єкт",
 )
-def update_item(item_id: int, payload: ItemCreate):
-    """Оновлює існуючий елемент або повертає 404."""
-    if item_id not in _items:
+def update_item(item_id: int, payload: ItemCreate, db: Session = Depends(get_db)):
+    """Оновлює існуючий елемент у базі даних або повертає 404."""
+    db_item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
+    if db_item is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Item with id {item_id} not found",
         )
-    updated = Item(id=item_id, **payload.model_dump())
-    _items[item_id] = updated
-    return updated
+    db_item.name = payload.name
+    db_item.description = payload.description
+    db_item.price = payload.price
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
 
 @app.delete(
@@ -107,11 +135,14 @@ def update_item(item_id: int, payload: ItemCreate):
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Видалити об'єкт",
 )
-def delete_item(item_id: int):
-    """Видаляє елемент за ID або повертає 404."""
-    if item_id not in _items:
+def delete_item(item_id: int, db: Session = Depends(get_db)):
+    """Видаляє елемент із бази даних або повертає 404."""
+    db_item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
+    if db_item is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Item with id {item_id} not found",
         )
-    del _items[item_id]
+    db.delete(db_item)
+    db.commit()
+    return None

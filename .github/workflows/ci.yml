@@ -11,6 +11,9 @@ on:
       - 'README.md'
 
 jobs:
+  # ---------------------------------------------------------
+  # Job 1: Збирання та запуск модульних тестів
+  # ---------------------------------------------------------
   build-n-test:
     name: Build and Unit Test
     runs-on: ubuntu-latest
@@ -41,12 +44,80 @@ jobs:
           name: test-results
           path: results.xml
 
-  docker-pack-n-push:
-    name: Package and Push Docker Image
+  # ---------------------------------------------------------
+  # Job 2: Збирання та пуш образу Backend API
+  # ---------------------------------------------------------
+  docker-backend:
+    name: Package Backend API Image
     needs: build-n-test
     uses: ./.github/workflows/docker-pack-n-push.yml
     with:
       image_name: 'hut0r9n/lab1-api'
       image_tag: 'latest'
+      dockerfile: 'Dockerfile'
+      build_context: '.'
       push_to_hub: ${{ github.ref == 'refs/heads/main' }}
     secrets: inherit
+
+  # ---------------------------------------------------------
+  # Job 3: Збирання та пуш образу Frontend
+  # ---------------------------------------------------------
+  docker-frontend:
+    name: Package Frontend Image
+    needs: build-n-test
+    uses: ./.github/workflows/docker-pack-n-push.yml
+    with:
+      image_name: 'hut0r9n/lab1-frontend'
+      image_tag: 'latest'
+      dockerfile: 'frontend/Dockerfile'
+      build_context: '.'
+      push_to_hub: ${{ github.ref == 'refs/heads/main' }}
+    secrets: inherit
+
+  # ---------------------------------------------------------
+  # Job 4: Збирання та пуш образу Migration Job
+  # ---------------------------------------------------------
+  docker-migration:
+    name: Package Migration Job Image
+    needs: build-n-test
+    uses: ./.github/workflows/docker-pack-n-push.yml
+    with:
+      image_name: 'hut0r9n/lab1-migration'
+      image_tag: 'latest'
+      dockerfile: 'Dockerfile.migration'
+      build_context: '.'
+      push_to_hub: ${{ github.ref == 'refs/heads/main' }}
+    secrets: inherit
+
+  # ---------------------------------------------------------
+  # Job 5: Лінтинг, пакування та вивантаження Helm Chart
+  # ---------------------------------------------------------
+  helm-package:
+    name: Lint and Package Helm Chart
+    needs: build-n-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.16.2'
+
+      - name: Lint Helm Chart
+        run: |
+          helm lint k8s/webapp
+
+      - name: Package Helm Chart
+        run: |
+          mkdir -p dist
+          helm package k8s/webapp --destination dist
+
+      - name: Upload Helm Chart Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart-webapp
+          path: dist/*.tgz
+          retention-days: 7
