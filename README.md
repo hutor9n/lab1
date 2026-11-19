@@ -10,7 +10,7 @@
 1. **Frontend (SPA):** легкий клієнтський веб-інтерфейс на Nginx, що відображає список сутностей, дозволяє додавати нові записи, редагувати їх та видаляти через REST API.
 2. **Backend API:** асинхронний REST-сервіс на **FastAPI** (Python 3.12) з ORM **SQLAlchemy** (Code-First підхід). Підтримує OpenAPI / Swagger UI за адресою `/docs`.
 3. **Database (PostgreSQL):** реляційна СУБД, розгорнута в Kubernetes через `StatefulSet` із збереженням даних на постійному томі (`PersistentVolumeClaim`).
-4. **Migration Job:** окремий консольний застосунок (`Dockerfile.migration`), що виконується в Kubernetes як `Job` (Helm post-install/post-upgrade hook) для автоматичного застосування міграцій до схеми бази даних перед стартом або оновленням сервісів.
+4. **Migration Job:** консольний застосунок (`Dockerfile.migration`) застосовує ревізії Alembic. Helm створює окремий Kubernetes Job для кожної ревізії релізу. Бекенд стає готовим приймати трафік, коли може прочитати таблицю `items`.
 5. **Ingress:** ресурс маршрутизації HTTP-трафіку, який спрямовує префікс `/api` до Backend API, а корінь `/` — до Frontend.
 6. **Helm Chart (`k8s/webapp`):** пакет для комплексного розгортання та конфігурації всіх вищевказаних компонентів.
 
@@ -19,7 +19,7 @@
 ## 🛠️ Мова та технологічний стек
 
 - **Backend:** Python 3.12, FastAPI, Uvicorn, SQLAlchemy, Pydantic
-- **Frontend:** HTML5, CSS3, JavaScript (Fetch API), Nginx Alpine
+- **Frontend:** React 18, Vite 6, JavaScript (Fetch API), Nginx Alpine
 - **Database:** PostgreSQL 16
 - **CI/CD:** GitHub Actions (модульне тестування, збирання 3 Docker-образів, лінтинг та пакування Helm Chart)
 - **Оркестрація:** Kubernetes, Helm v3/v4, Ingress NGINX
@@ -42,25 +42,27 @@ docker build -t hut0r9n/lab1-migration -f Dockerfile.migration .
 
 ### 2. Запуск локального середовища
 ```bash
+docker network create lab4
+
 # 1. Запуск бази даних PostgreSQL
-docker run -d --name postgres-db \
+docker run -d --name postgres-db --network lab4 \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgrespassword \
   -e POSTGRES_DB=itemsdb \
-  -p 5432:5432 postgres:16-alpine
+  postgres:16-alpine
 
 # 2. Застосування міграцій
-docker run --rm \
-  -e DATABASE_URL="postgresql://postgres:postgrespassword@host.docker.internal:5432/itemsdb" \
+docker run --rm --network lab4 \
+  -e DATABASE_URL="postgresql://postgres:postgrespassword@postgres-db:5432/itemsdb" \
   hut0r9n/lab1-migration
 
 # 3. Запуск Backend API
-docker run -d --name api-service -p 8000:8000 \
-  -e DATABASE_URL="postgresql://postgres:postgrespassword@host.docker.internal:5432/itemsdb" \
+docker run -d --name lab-api --network lab4 -p 8000:8000 \
+  -e DATABASE_URL="postgresql://postgres:postgrespassword@postgres-db:5432/itemsdb" \
   hut0r9n/lab1-api
 
 # 4. Запуск Frontend
-docker run -d --name frontend-service -p 80:80 \
+docker run -d --name frontend-service --network lab4 -p 80:80 \
   hut0r9n/lab1-frontend
 ```
 
@@ -118,6 +120,16 @@ kubectl -n webapp-lab get all
 kubectl -n webapp-lab get pvc
 kubectl -n webapp-lab get ingress
 ```
+
+Для доступу через Ingress потрібен встановлений контролер класу `nginx`.
+Спрямуйте `webapp.lab.test` на адресу цього контролера й відкрийте
+`http://webapp.lab.test`. Без контролера можна перевірити клієнт і його
+проксі командою `kubectl -n webapp-lab port-forward service/lab-frontend 8080:80`
+і відкрити `http://localhost:8080`.
+
+GitHub Actions пакує чарт в артефакт `helm-chart-webapp` і перевіряє
+розгортання цього пакета в тестовому кластері kind. Перевірка виконує
+операції створення, перегляду, редагування та видалення через проксі Nginx.
 
 ### 6. Видалення релізу
 ```bash

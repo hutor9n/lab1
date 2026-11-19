@@ -121,3 +121,42 @@ jobs:
           name: helm-chart-webapp
           path: dist/*.tgz
           retention-days: 7
+
+      - name: Create Kubernetes test cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: lab4-ci
+
+      - name: Deploy the packaged chart with the images from this checkout
+        run: |
+          docker build -t lab4-api:ci .
+          docker build -t lab4-frontend:ci -f frontend/Dockerfile .
+          docker build -t lab4-migration:ci -f Dockerfile.migration .
+          kind load docker-image --name lab4-ci lab4-api:ci lab4-frontend:ci lab4-migration:ci
+          helm upgrade --install lab dist/*.tgz \
+            --namespace webapp-lab --create-namespace \
+            --set api.image.repository=lab4-api,api.image.tag=ci,api.image.pullPolicy=Never \
+            --set frontend.image.repository=lab4-frontend,frontend.image.tag=ci,frontend.image.pullPolicy=Never \
+            --set migration.image.repository=lab4-migration,migration.image.tag=ci,migration.image.pullPolicy=Never \
+            --wait --wait-for-jobs --timeout 5m
+
+      - name: Check the frontend and CRUD through its Nginx proxy
+        run: |
+          kubectl -n webapp-lab port-forward service/lab-frontend 8080:80 &
+          forward_pid=$!
+          trap 'kill "$forward_pid"' EXIT
+
+          base_url=http://127.0.0.1:8080
+          curl -fsS --retry 10 --retry-connrefused --retry-delay 1 "$base_url/" > index.html
+          asset=$(grep -oE '/assets/[^"]+\.js' index.html)
+          curl -fsS "$base_url$asset" > /dev/null
+          items_url="$base_url/api/items"
+          item=$(curl -fsS -H 'Content-Type: application/json' \
+            -d '{"name":"CI item","price":10}' "$items_url")
+          id=$(jq -er '.id' <<< "$item")
+          curl -fsS "$items_url" | jq -e --argjson id "$id" 'any(.[]; .id == $id)'
+          curl -fsS -X PUT -H 'Content-Type: application/json' \
+            -d '{"name":"Updated CI item","price":12}' "$items_url/$id" |
+            jq -e '.name == "Updated CI item" and .price == 12'
+          curl -fsS -X DELETE "$items_url/$id"
+          curl -fsS "$items_url" | jq -e --argjson id "$id" 'all(.[]; .id != $id)'

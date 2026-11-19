@@ -3,12 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import Base, engine, get_db
 from app.models import ItemModel
 
 # Автоматичне створення таблиць (якщо міграції не запускалися окремо або для тестів)
-Base.metadata.create_all(bind=engine)
+if engine.dialect.name == "sqlite":
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Items API",
@@ -57,6 +59,25 @@ def _reset_storage() -> None:
         db.commit()
     finally:
         db.close()
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Report whether the API process can serve HTTP."""
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready(db: Session = Depends(get_db)) -> dict[str, str]:
+    """Check that the API can query the items schema."""
+    try:
+        db.query(ItemModel).limit(0).all()
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database schema is unavailable",
+        ) from error
+    return {"status": "ready"}
 
 
 # ---------------------------------------------------------------------------

@@ -28,7 +28,7 @@ migration:
   image:
     repository: hut0r9n/lab1-migration
     tag: latest
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   backoffLimit: 4
 
 # ---------- Backend API Settings ----------
@@ -38,7 +38,7 @@ api:
   image:
     repository: hut0r9n/lab1-api
     tag: latest
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   service:
     name: lab-api
     type: ClusterIP
@@ -58,7 +58,7 @@ frontend:
   image:
     repository: hut0r9n/lab1-frontend
     tag: latest
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   service:
     name: lab-frontend
     type: ClusterIP

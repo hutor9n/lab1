@@ -2,14 +2,10 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "webapp.fullname" . }}-migration
+  name: {{ printf "%s-migration-%d" (include "webapp.fullname" . | trunc 40 | trimSuffix "-") .Release.Revision }}
   labels:
     {{- include "webapp.labels" . | nindent 4 }}
     app.kubernetes.io/component: migration
-  annotations:
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "1"
-    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   backoffLimit: {{ .Values.migration.backoffLimit }}
   template:

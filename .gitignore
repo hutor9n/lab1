@@ -12,3 +12,7 @@ build/
 .vscode/
 *.log
 page_*.txt
+/frontend/node_modules/
+/items.db
+conductor/
+

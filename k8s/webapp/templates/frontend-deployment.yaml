@@ -37,6 +37,9 @@ spec:
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          env:
+            - name: API_UPSTREAM
+              value: {{ printf "%s:%d" .Values.api.service.name (int .Values.api.service.port) | quote }}
           ports:
             - containerPort: 80
               name: http

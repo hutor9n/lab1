@@ -17,6 +17,11 @@ client = TestClient(app)
 SAMPLE_ITEM = {"name": "Laptop", "description": "A powerful laptop", "price": 999.99}
 
 
+def test_health_and_readiness():
+    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/ready").json() == {"status": "ready"}
+
+
 # ---------------------------------------------------------------------------
 # POST /api/items
 # ---------------------------------------------------------------------------
